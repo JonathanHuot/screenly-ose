@@ -242,6 +242,7 @@ class AssetRowView extends Backbone.View
       when "video"   then "icon-facetime-video"
       when "image"   then "icon-picture"
       when "webpage" then "icon-globe"
+      when "script"  then "icon-file"
       else ""
     @el
 

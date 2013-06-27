@@ -542,6 +542,8 @@
             return "icon-picture";
           case "webpage":
             return "icon-globe";
+          case "script":
+            return "icon-file";
           default:
             return "";
         }

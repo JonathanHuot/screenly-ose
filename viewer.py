@@ -24,6 +24,7 @@ from settings import settings
 import html_templates
 
 from utils import url_fails
+from subprocess import Popen, PIPE
 
 import db
 import assets_helper
@@ -215,7 +216,7 @@ def load_browser():
 
     if settings['show_splash']:
         # Show splash screen for 60 seconds.
-        sleep(60)
+        sleep(10)
     else:
         # Give browser some time to start (we have seen multiple uzbl running without this)
         sleep(10)
@@ -315,6 +316,19 @@ def disable_browser_status():
     browser_fifo('set show_status = 0')
 
 
+def view_script(uri, duration):
+    logging.debug('Executing script %s for %s seconds.' % (uri, duration))
+
+    if asset_is_accessible(uri):
+	logging.debug('Launching python script')
+	run = Popen(['python', uri], stdout=PIPE, stderr=PIPE, stdin=PIPE)
+	sleep(int(dur))
+	run.kill()
+	logging.debug('python script killed')
+    else:
+        logging.debug('Received non-200 status (or file not found if local) from %s. Skipping.' % (uri))
+
+
 def view_image(uri, duration):
     logging.debug('Displaying image %s for %s seconds.' % (uri, duration))
 
@@ -372,15 +386,17 @@ def view_video(uri):
 
 
 def view_web(url, duration):
+    logging.debug('Web content : %s' % url)
     if asset_is_accessible(url):
         logging.debug('Web content appears to be available. Proceeding.')
         logging.debug('Displaying url %s for %s seconds.' % (url, duration))
 
         browser_url(url)
+        logging.debug('Waiting for %s seconds.' % duration)
 
         sleep(int(duration))
     else:
-        logging.debug('Received non-200 status (or file not found if local) from %s. Skipping.' % (url))
+        logging.debug('Received non-200 status (or file not found if local) from %s. Skipping website.' % (url))
 
 
 def toggle_load_screen(status=True):
@@ -539,8 +555,9 @@ if __name__ == "__main__":
         asset = scheduler.get_next_asset()
         logging.debug('got asset %s' % asset)
 
-        is_up_to_date = check_update()
-        logging.debug('Check update: %s' % str(is_up_to_date))
+	if settings['check_update'] == True:
+            is_up_to_date = check_update()
+            logging.debug('Check update: %s' % str(is_up_to_date))
 
         if asset is None:
             # The playlist is empty, go to sleep.
@@ -550,7 +567,7 @@ if __name__ == "__main__":
             sleep(5)
         elif not url_fails(asset['uri']):
             toggle_load_screen(False)
-            logging.info('Showing asset %s.' % asset["name"])
+            logging.info('Showing asset %s of type %s.' % (asset["name"], asset["mimetype"]))
 
             watchdog()
 
@@ -558,8 +575,10 @@ if __name__ == "__main__":
                 view_image(asset['uri'], asset["duration"])
             elif "video" in asset["mimetype"]:
                 view_video(asset["uri"])
-            elif "web" in asset["mimetype"]:
+            elif "webpage" in asset["mimetype"] or "web" in asset["mimetype"]:
                 view_web(asset["uri"], asset["duration"])
+	    elif "script" in asset["mimetype"]:
+		view_script(asset["uri"], asset["duration"])
             else:
                 print "Unknown MimeType, or MimeType missing"
         else:
