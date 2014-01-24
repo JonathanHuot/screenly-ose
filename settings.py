@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
 
 from os import path, getenv
 from sys import exit
@@ -7,12 +6,13 @@ import ConfigParser
 import logging
 from UserDict import IterableUserDict
 
-CONFIG_DIR = path.join(getenv('HOME'), '.screenly')
-
+CONFIG_DIR = '.screenly/'
+CONFIG_FILE = 'screenly.conf'
 DEFAULTS = {
     'main': {
-        'database': '.screenly/screenly.db',
+        'database': CONFIG_DIR + 'screenly.db',
         'listen': '0.0.0.0:8080',
+        'assetdir': 'screenly_assets',
     },
     'viewer': {
         'show_splash': True,
@@ -22,6 +22,7 @@ DEFAULTS = {
         'default_duration': '10',
         'debug_logging': False,
         'check_update': True,
+        'verify_ssl': True,
     }
 }
 
@@ -44,11 +45,11 @@ class ScreenlySettings(IterableUserDict):
 
     def __init__(self, *args, **kwargs):
         rv = IterableUserDict.__init__(self, *args, **kwargs)
-        self.conf_file = path.join(CONFIG_DIR, 'screenly.conf')
+        self.home = getenv('HOME')
+        self.conf_file = self.get_configfile()
 
         if not path.isfile(self.conf_file):
-            print 'Config-file missing.'
-            logging.error('Config-file missing.')
+            logging.error('Config-file %s missing', self.conf_file)
             exit(1)
         else:
             self.load()
@@ -65,6 +66,8 @@ class ScreenlySettings(IterableUserDict):
         except ConfigParser.Error as e:
             logging.debug("Could not parse setting '%s.%s': %s. Using default value: '%s'." % (section, field, unicode(e), default))
             self[field] = default
+        if field in ['database', 'assetdir']:
+            self[field] = str(path.join(self.home, self[field]))
 
     def _set(self, config, section, field, default):
         if isinstance(default, bool):
@@ -100,13 +103,10 @@ class ScreenlySettings(IterableUserDict):
         self.load()
 
     def get_configdir(self):
-        return CONFIG_DIR
+        return path.join(self.home, CONFIG_DIR)
 
-    def get_database(self):
-        return path.join(getenv('HOME'), self['database'])
-
-    def get_asset_folder(self):
-        return path.join(getenv('HOME'), 'screenly_assets')
+    def get_configfile(self):
+        return path.join(self.home, CONFIG_DIR, CONFIG_FILE)
 
     def get_listen_ip(self):
         return self['listen'].split(':')[0]

@@ -4,7 +4,7 @@
 __author__ = "Viktor Petersson"
 __copyright__ = "Copyright 2012, WireLoad Inc"
 __license__ = "Dual License: GPLv2 and Commercial License"
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 __email__ = "vpetersson@wireload.net"
 
 from datetime import datetime, timedelta
@@ -32,6 +32,7 @@ from utils import json_dump
 from utils import get_node_ip
 from utils import validate_url
 from utils import url_fails
+from utils import get_video_duration
 
 from settings import settings, DEFAULTS
 ################################
@@ -56,7 +57,7 @@ def is_up_to_date():
     Used in conjunction with check_update() in viewer.py.
     """
 
-    sha_file = path.join(getenv('HOME'), '.screenly', 'latest_screenly_sha')
+    sha_file = path.join(settings.get_configdir(), 'latest_screenly_sha')
 
     # Until this has been created by viewer.py, let's just assume we're up to date.
     if not os.path.exists(sha_file):
@@ -153,7 +154,7 @@ def prepare_asset(request):
             asset['uri'] = uri
 
         if filename:
-            asset['uri'] = path.join(settings.get_asset_folder(), asset['asset_id'])
+            asset['uri'] = path.join(settings['assetdir'], asset['asset_id'])
 
             with open(asset['uri'], 'w') as f:
                 while True:
@@ -163,9 +164,13 @@ def prepare_asset(request):
                     f.write(chunk)
 
         if "video" in asset['mimetype']:
-            asset['duration'] = "N/A"
+            video_duration = get_video_duration(asset['uri'])
+            if video_duration:
+                asset['duration'] = int(video_duration.total_seconds())
+            else:
+                asset['duration'] = 'N/A'
         else:
-            # crashes if it's not an int. we want that.
+            # Crashes if it's not an int. We want that.
             asset['duration'] = int(get('duration'))
 
         if get('start_date'):
@@ -235,7 +240,7 @@ def edit_asset(asset_id):
 def remove_asset(asset_id):
     asset = assets_helper.read(db_conn, asset_id)
     try:
-        if asset['uri'].startswith(settings.get_asset_folder()):
+        if asset['uri'].startswith(settings['assetdir']):
             os.remove(asset['uri'])
     except OSError:
         pass
@@ -247,12 +252,13 @@ def remove_asset(asset_id):
 @api
 def playlist_order():
     "Receive a list of asset_ids in the order they should be in the playlist"
-    for play_order,asset_id in enumerate(request.POST.get('ids', '').split(',')):
-        assets_helper.update(db_conn, asset_id, {'asset_id':asset_id, 'play_order':play_order})
+    for play_order, asset_id in enumerate(request.POST.get('ids', '').split(',')):
+        assets_helper.update(db_conn, asset_id, {'asset_id': asset_id, 'play_order': play_order})
 
 ################################
 # Views
 ################################
+
 
 @route('/')
 def viewIndex():
@@ -345,13 +351,13 @@ def static(path):
 
 if __name__ == "__main__":
     # Make sure the asset folder exist. If not, create it
-    if not path.isdir(settings.get_asset_folder()):
-        mkdir(settings.get_asset_folder())
+    if not path.isdir(settings['assetdir']):
+        mkdir(settings['assetdir'])
     # Create config dir if it doesn't exist
     if not path.isdir(settings.get_configdir()):
         makedirs(settings.get_configdir())
 
-    with db.conn(settings.get_database()) as conn:
+    with db.conn(settings['database']) as conn:
         global db_conn
         db_conn = conn
         with db.cursor(db_conn) as c:
