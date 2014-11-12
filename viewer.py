@@ -15,6 +15,7 @@ from signal import signal, SIGUSR1, SIGUSR2
 import logging
 import sh
 
+
 from settings import settings
 import html_templates
 from utils import url_fails
@@ -76,8 +77,9 @@ class Scheduler(object):
     def refresh_playlist(self):
         logging.debug('refresh_playlist')
         time_cur = datetime.utcnow()
-        logging.debug('refresh: counter: (%s) deadline (%s) timecur (%s)', self.counter, self.deadline, time_cur)
+        logging.debug('refresh: counter: (%s) deadline (%s) timecur (%s) lastupdate (%s) currentupdate (%s)', self.counter, self.deadline, time_cur, self.last_update_db_mtime, self.get_db_mtime())
         if self.get_db_mtime() > self.last_update_db_mtime:
+    	    db_conn = db.reload(db_conn, settings['database'])
             logging.debug('updating playlist due to database modification')
             self.update_playlist()
         elif settings['shuffle_playlist'] and self.counter >= 5:
