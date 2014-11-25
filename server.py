@@ -91,6 +91,7 @@ def template(template_name, **context):
     # Add global contexts
     context['up_to_date'] = is_up_to_date()
     context['default_duration'] = settings['default_duration']
+    context['use_24_hour_clock'] = settings['use_24_hour_clock']
 
     return haml_template(template_name, **context)
 
@@ -120,7 +121,7 @@ def prepare_asset(request):
             get('mimetype')]):
 
         asset = {
-            'name': get('name').decode('UTF-8'),
+            'name': get('name'),
             'mimetype': get('mimetype'),
             'asset_id': get('asset_id'),
             'is_enabled': get('is_enabled'),
@@ -366,5 +367,5 @@ if __name__ == "__main__":
             if c.fetchone() is None:
                 c.execute(assets_helper.create_assets_table)
         run(host=settings.get_listen_ip(),
-            port=settings.get_listen_port(),
+            port=settings.get_listen_port(), fast=True,
             reloader=True)

@@ -1,11 +1,29 @@
 ### screenly-ose ui ###
 
 API = (window.Screenly ||= {}) # exports
+
+date_settings_12hour =
+  full_date: 'MM/DD/YYYY hh:mm:ss A',
+  date: 'MM/DD/YYYY',
+  time: 'hh:mm A',
+  show_meridian: true,
+  date_picker_format: 'mm/dd/yyyy'
+
+date_settings_24hour =
+  full_date: 'YYYY/MM/DD HH:mm:ss',
+  date: 'YYYY/MM/DD',
+  time: 'HH:mm',
+  show_meridian: false,
+  datepicker_format: 'yyyy/mm/dd'
+
+date_settings = if use_24_hour_clock then date_settings_24hour else date_settings_12hour
+
+
 API.date_to = date_to = (d) ->
   dd = moment (new Date d)
-  string: -> dd.format 'MM/DD/YYYY hh:mm:ss A'
-  date: -> dd.format 'MM/DD/YYYY'
-  time: -> dd.format 'hh:mm A'
+  string: -> dd.format date_settings.full_date
+  date: -> dd.format date_settings.date
+  time: -> dd.format date_settings.time
 
 now = -> new Date()
 
@@ -14,12 +32,18 @@ delay = (wait, fn) -> _.delay fn, wait
 
 mimetypes = [ [('jpg jpeg png pnm gif bmp'.split ' '), 'image']
               [('avi mkv mov mpg mpeg mp4 ts flv'.split ' '), 'video']]
+viduris   = ('rtsp rtmp'.split ' ')
+
+
 get_mimetype = (filename) =>
+  scheme = (_.first filename.split ':').toLowerCase()
+  match = scheme in viduris
+  if match then return 'video'
   ext = (_.last filename.split '.').toLowerCase()
   mt = _.find mimetypes, (mt) -> ext in mt[0]
   if mt then mt[1] else null
 
-url_test = (v) -> /(http|https):\/\/[\w-]+(\.?[\w-]+)+([\w.,@?^=%&amp;:\/~+#-]*[\w@?^=%&amp;\/~+#-])?/.test v
+url_test = (v) -> /(http|https|rtsp|rtmp):\/\/[\w-]+(\.?[\w-]+)+([\w.,@?^=%&amp;:\/~+#-]*[\w@?^=%&amp;\/~+#-])?/.test v
 get_filename = (v) -> (v.replace /[\/\\\s]+$/g, '').replace /^.*[\\\/]/g, ''
 insertWbr = (v) -> (v.replace /\//g, '/<wbr>').replace /\&/g, '&amp;<wbr>'
 
@@ -34,19 +58,40 @@ API.Asset = class Asset extends Backbone.Model
     name: ''
     mimetype: 'webpage'
     uri: ''
+    is_active: false
     start_date: now()
     end_date: (moment().add 'days', 7).toDate()
     duration: default_duration
     is_enabled: 0
     nocache: 0
+    play_order: 0
+  active: =>
+    if @get('is_enabled') and @get('start_date') and @get('end_date')
+      at = now()
+      start_date = new Date(@get('start_date'));
+      end_date = new Date(@get('end_date'));
+      return start_date <= at <= end_date
+    else
+      return false
+
+  backup: =>
+    @backup_attributes = @toJSON()
+
+  rollback: =>
+    if @backup_attributes
+      @set @backup_attributes
+      @backup_attributes = undefined
+
 
 API.Assets = class Assets extends Backbone.Collection
   url: "/api/assets"
   model: Asset
+  comparator: 'play_order'
 
 
 # Views
-class EditAssetView extends Backbone.View
+API.View = {};
+API.View.EditAssetView = class EditAssetView extends Backbone.View
   $f: (field) => @$ "[name='#{field}']" # get field element
   $fv: (field, val...) => (@$f field).val val... # get or set filed value
 
@@ -54,12 +99,16 @@ class EditAssetView extends Backbone.View
     @edit = options.edit
     ($ 'body').append @$el.html get_template 'asset-modal'
     (@$ 'input.time').timepicker
-      minuteStep: 5, showInputs: yes, disableFocus: yes, showMeridian: yes
+      minuteStep: 5, showInputs: yes, disableFocus: yes, showMeridian: date_settings.show_meridian
 
     (@$ 'input[name="nocache"]').prop 'checked', @model.get 'nocache'
     (@$ '.modal-header .close').remove()
     (@$el.children ":first").modal()
+
+    @model.backup()
+
     @model.bind 'change', @render
+
     @render()
     @validate()
     _.delay (=> (@$f 'uri').focus()), 300
@@ -72,7 +121,7 @@ class EditAssetView extends Backbone.View
       (@$ '#modalLabel').text "Edit Asset"
       (@$ '.asset-location').hide(); (@$ '.asset-location.edit').show()
 
-    (@$ '.duration').toggle ((@model.get 'mimetype') != 'video')
+    (@$ '.duration').toggle (true)
     @clickTabNavUri() if (@model.get 'mimetype') == 'webpage'
 
     for field in @model.fields
@@ -83,7 +132,7 @@ class EditAssetView extends Backbone.View
     for which in ['start', 'end']
       d = date_to @model.get "#{which}_date"
       @$fv "#{which}_date_date", d.date()
-      (@$f "#{which}_date_date").datepicker autoclose: yes
+      (@$f "#{which}_date_date").datepicker autoclose: yes, format: date_settings.datepicker_format
       (@$f "#{which}_date_date").datepicker 'setValue', d.date()
       @$fv "#{which}_date_time", d.time()
 
@@ -108,6 +157,7 @@ class EditAssetView extends Backbone.View
     'click .advanced-toggle': 'toggleAdvanced'
     'paste [name=uri]': 'updateUriMimetype'
     'change [name=file_upload]': 'updateFileUploadMimetype'
+    'change [name=mimetype]': 'change_mimetype'
 
   save: (e) =>
     e.preventDefault()
@@ -151,6 +201,14 @@ class EditAssetView extends Backbone.View
       yes), 500
     @_change arguments...
 
+  change_mimetype: =>
+    if (@$fv 'mimetype') != "video"
+      (@$ '.zerohint').hide()
+      @$fv 'duration', default_duration
+    else
+      (@$ '.zerohint').show()
+      @$fv 'duration', 0
+
   validate: (e) =>
     that = this
     validators =
@@ -179,7 +237,7 @@ class EditAssetView extends Backbone.View
 
 
   cancel: (e) =>
-    @model.set @model.previousAttributes()
+    @model.rollback()
     unless @edit then @model.destroy()
     (@$el.children ":first").modal 'hide'
 
@@ -210,6 +268,7 @@ class EditAssetView extends Backbone.View
     mt = get_mimetype filename
     (@$ '#file_upload_label').text (get_filename filename)
     @$fv 'mimetype', mt if mt
+    @change_mimetype()
 
   toggleAdvanced: =>
     (@$ '.icon-play').toggleClass 'rotated'
@@ -224,7 +283,7 @@ class EditAssetView extends Backbone.View
     (@$ '.advanced-accordion').toggle has_nocache is on
 
 
-class AssetRowView extends Backbone.View
+API.View.AssetRowView = class AssetRowView extends Backbone.View
   tagName: "tr"
 
   initialize: (options) =>
@@ -297,7 +356,7 @@ class AssetRowView extends Backbone.View
     no
 
 
-class AssetsView extends Backbone.View
+API.View.AssetsView = class AssetsView extends Backbone.View
   initialize: (options) =>
     @collection.bind event, @render for event in ('reset add remove sync'.split ' ')
     @sorted = (@$ '#active-assets').sortable
@@ -307,13 +366,16 @@ class AssetsView extends Backbone.View
       update: @update_order
 
   update_order: =>
+    @collection.get(id).set('play_order', i) for id, i in (@$ '#active-assets').sortable 'toArray'
+    @collection.sort()
+
     $.post '/api/assets/order', ids: ((@$ '#active-assets').sortable 'toArray').join ','
 
   render: =>
     (@$ "##{which}-assets").html '' for which in ['active', 'inactive']
 
     @collection.each (model) =>
-      which = if model.get 'is_active' then 'active' else 'inactive'
+      which = if model.active() then 'active' else 'inactive'
       (@$ "##{which}-assets").append (new AssetRowView model: model).render()
 
     for which in ['inactive', 'active']
@@ -347,7 +409,4 @@ API.App = class App extends Backbone.View
     new EditAssetView model:
       new Asset {}, {collection: API.assets}
     no
-
-
-jQuery -> API.app = new App el: $ 'body'
 

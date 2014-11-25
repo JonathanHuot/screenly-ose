@@ -13,6 +13,7 @@
 
     :javascript
       var default_duration = ${default_duration};
+      var use_24_hour_clock = ${'true' if use_24_hour_clock else 'false'};
 
     %script(src="/static/js/underscore-1.4.3.min.js")
 
@@ -30,6 +31,7 @@
 
     %script(src="/static/js/moment.js")
     %script(src="/static/js/screenly-ose.js")
+    %script(src="/static/js/main.js")
 
     %script(type="text/template", id="asset-row-template")
       %td.asset_row_name
@@ -140,6 +142,8 @@
                 .controls
                   %input.span1(type="number", name="duration")
                   seconds
+                  &nbsp;
+                  %span.muted.zerohint(style="display:none") use 0 to autodetect video length
               .advanced-accordion.accordion
                 .accordion-group
                   .accrodion-heading
