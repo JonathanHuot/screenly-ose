@@ -23,6 +23,7 @@ DEFAULTS = {
         'debug_logging': False,
         'check_update': True,
         'verify_ssl': True,
+        'use_24_hour_clock': False
     }
 }
 
